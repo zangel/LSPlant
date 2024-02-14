@@ -40,6 +40,20 @@ struct InitInfo {
     /// \note It should be able to resolve symbols from both .dynsym and .symtab.
     using ArtSymbolPrefixResolver = std::function<void *(std::string_view symbol_prefix)>;
 
+    /// \brief Type of executable memory allocator function.
+    /// In \ref std::function form so that user can use lambda expression with capture list.<br>
+    /// \p size is the of requested executable memory to allocate.<br>
+    /// \p return is the pointer to the executable memory.
+    /// It should return null if executable memory could not be allocated. <br>
+    using ExecMemAlloc = std::function<void *(size_t size)>;
+
+    /// \brief Type of executable memory copy function.
+    /// In \ref std::function form so that user can use lambda expression with capture list.<br>
+    /// \p dest is a destination memory address to copy to.<br>
+    /// \p src is source memory address to copy from.
+    /// \p n is number of bytes to copy from src to dest. <br>
+    using ExecMemCopy = std::function<void (void *dest, const void *src, size_t n)>;
+
     /// \brief The inline hooker function. Must not be null.
     InlineHookFunType inline_hooker;
     /// \brief The inline unhooker function. Must not be null.
@@ -49,6 +63,12 @@ struct InitInfo {
 
     /// \brief The symbol prefix resolver to \p libart.so. May be null.
     ArtSymbolPrefixResolver art_symbol_prefix_resolver;
+
+    /// \brief The custom executable memory allocator function. If null, a mmap is used.
+    ExecMemAlloc exec_mem_alloc;
+
+    /// \brief The custom executable memory copy function. If null, a memcpy is used.
+    ExecMemCopy exec_mem_copy;
 
     /// \brief The generated class name. Must not be empty. It contains a field and a method
     /// and they could be set by \p generated_field_name and \p generated_method_name respectively.

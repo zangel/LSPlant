@@ -107,6 +107,18 @@ std::string generated_source_name;
 std::string generated_field_name;
 std::string generated_method_name;
 
+InitInfo::ExecMemAlloc exec_mem_alloc = [] (size_t size) -> void*{
+    return mmap(nullptr, size,
+                PROT_READ | PROT_WRITE | PROT_EXEC,
+                MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+};
+
+InitInfo::ExecMemCopy exec_mem_copy = [](void *dest, const void *src, size_t n) -> void {
+    memcpy(dest, src, n);
+};
+
+//using ExecMemCopy = std::function<void (void *dest, const void *src, size_t n)>;
+
 bool InitConfig(const InitInfo &info) {
     if (info.generated_class_name.empty()) {
         LOGE("generated class name cannot be empty");
@@ -124,6 +136,15 @@ bool InitConfig(const InitInfo &info) {
     }
     generated_method_name = info.generated_method_name;
     generated_source_name = info.generated_source_name;
+
+    if (info.exec_mem_alloc) {
+        exec_mem_alloc = info.exec_mem_alloc;
+    }
+
+    if (info.exec_mem_copy) {
+        exec_mem_copy = info.exec_mem_copy;
+    }
+
     return true;
 }
 
@@ -534,9 +555,7 @@ void *GenerateTrampolineFor(art::ArtMethod *hook) {
                 trampoline_lock.wait(true, std::memory_order_acquire);
                 continue;
             }
-            address = reinterpret_cast<uintptr_t>(mmap(nullptr, kPageSize,
-                                                       PROT_READ | PROT_WRITE | PROT_EXEC,
-                                                       MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+            address = reinterpret_cast<uintptr_t>(exec_mem_alloc(kPageSize));
             if (address == reinterpret_cast<uintptr_t>(MAP_FAILED)) {
                 PLOGE("mmap trampoline");
                 trampoline_lock.clear(std::memory_order_release);
@@ -556,9 +575,9 @@ void *GenerateTrampolineFor(art::ArtMethod *hook) {
         break;
     }
     auto *address_ptr = reinterpret_cast<char *>(address);
-    std::memcpy(address_ptr, trampoline.data(), trampoline.size());
+    exec_mem_copy(address_ptr, trampoline.data(), trampoline.size());
 
-    *reinterpret_cast<art::ArtMethod **>(address_ptr + art_method_offset) = hook;
+    exec_mem_copy(address_ptr + art_method_offset, &hook, sizeof(hook));
 
     __builtin___clear_cache(address_ptr, reinterpret_cast<char *>(address + trampoline.size()));
 
